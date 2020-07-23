@@ -23,13 +23,14 @@ const Container = styled.div`
 `;
 interface ModelProps {
   onClose?: () => void
+  title?: string;
 }
 const Model: React.FC<ModelProps> = props => {
-  const { onClose } = props;
+  const { onClose, title } = props;
   return (
     <Container>
       <div className="header">
-        深度解读
+        {title}
         <CloseOutlined style={{ float: 'right' }} onClick={onClose} />
       </div>
       <div className="container">{props.children}</div>

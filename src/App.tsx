@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DraggableFields, { DraggableFieldState } from './Fields';
 import { Record, Field, Filters } from './interfaces';
 import { getTitanicData } from './data/titanic';
@@ -11,6 +11,8 @@ import InsightBoard from './InsightBoard';
 import { Button, DropdownSelect, Checkbox } from '@tableau/tableau-ui';
 import Model from './components/model';
 import { getStudentsData } from './data/students';
+import DataSourcePanel from './dataSource/index';
+import { useGlobalState } from './store';
 
 
 const INIT_DF_STATE: DraggableFieldState = {
@@ -31,6 +33,7 @@ interface Dataset {
   dataSource: Record[]
 }
 function App() {
+  const [GS, updateGS] = useGlobalState();
   const [fields, setFields] = useState<Field[]>([]);
   const [fstate, setFstate] = useState<DraggableFieldState>(INIT_DF_STATE);
   const [geomType, setGeomType] = useState<string>(GEMO_TYPES[0].value);
@@ -39,33 +42,28 @@ function App() {
   const [showMenu, setShowMenu] = useState<boolean>(false);
   const [showInsight, setShowInsight] = useState<boolean>(false);
   const [filters, setFilters] = useState<Filters>({});
-  const [dsKey, setDSKey] = useState<string>(DS_LIST[0].value);
-  const [ds, setDS] = useState<Dataset>({ dimensions: [], measures: [], dataSource: []});
-  useEffect(() => {
-    const target = DS_LIST.find(d => d.value === dsKey);
-    if (target) {
-      setDS(target.service())
-    }
-  }, [dsKey])
+  const [showDSPanel, setShowDSPanel] = useState<boolean>(false);
+  // const [ds, setDS] = useState<Dataset>({ dimensions: [], measures: [], dataSource: []});
+  const [newDBIndex, setNewDBIndex] = useState<number>(0);
+  // useEffect(() => {
+  //   const target = DS_LIST.find(d => d.value === dsKey);
+  //   if (target) {
+  //     setDS(target.service())
+  //   }
+  // }, [dsKey])
   useEffect(() => {
     const fs: Field[] = [];
-    ds.dimensions.forEach(dim => {
+    const ds = GS.dataBase[GS.currentDBIndex];
+    ds.fields.forEach(f => {
       fs.push({
-        id: dim,
-        name: dim,
-        type: 'D'
-      })
-    })
-    ds.measures.forEach(mea => {
-      fs.push({
-        id: mea,
-        name: mea,
-        type: 'M',
-        aggName: 'sum'
+        id: f.key,
+        name: f.key,
+        type: f.analyticType === "dimension" ? 'D' : 'M',
+        aggName: f.analyticType === 'measure' ? 'sum' : undefined
       })
     })
     setFields(fs);
-  }, [ds]);
+  }, [GS.currentDBIndex, GS.dataBase]);
 
   const viewDimensions = useMemo<Field[]>(() => {
     return [
@@ -86,6 +84,19 @@ function App() {
     ].filter((f) => f.type === 'M');
   }, [fstate]);
 
+  const createDB = useCallback(() => {
+    updateGS(draft => {
+      const newLastIndex = draft.dataBase.length;
+      draft.dataBase.push({
+        id: 'ds_' + newLastIndex,
+        name: '新数据源' + newLastIndex,
+        dataSource: [],
+        fields: []
+      })
+      setNewDBIndex(newLastIndex);
+    })
+  }, []);
+
   return (
     <div className="App">
       <Container>
@@ -93,17 +104,30 @@ function App() {
           当前数据集
         </label>
         <DropdownSelect
-          value={dsKey}
+          value={GS.dataBase[GS.currentDBIndex].id}
           onChange={(e) => {
-            setDSKey(e.target.value);
+            // setDSKey(e.target.value);
+            updateGS(draft => {
+              const index = draft.dataBase.findIndex(ds => ds.id === e.target.value);
+              draft.currentDBIndex = index;
+            })
           }}
         >
-          {DS_LIST.map((ds) => (
-            <option value={ds.value} key={ds.value}>
-              {ds.label}
+          {GS.dataBase.map((ds) => (
+            <option value={ds.id} key={ds.id}>
+              {ds.name}
             </option>
           ))}
         </DropdownSelect>
+        <Button style={{ marginLeft: '8px'}} onClick={() => {
+          createDB();
+          setShowDSPanel(true);
+        }}>创建数据集</Button>
+        {
+          showDSPanel && <Model title="创建数据源" onClose={() => { setShowDSPanel(false); }}>
+            <DataSourcePanel dbIndex={newDBIndex} onSubmit={() => { setShowDSPanel(false); }} />
+          </Model>
+        }
       </Container>
       <Container>
         <DraggableFields
@@ -151,7 +175,7 @@ function App() {
             }}
           >
             <InsightBoard
-              dataSource={ds.dataSource}
+              dataSource={GS.dataBase[GS.currentDBIndex].dataSource}
               fields={fields}
               viewDs={viewDimensions}
               viewMs={viewMeasures}
@@ -175,7 +199,7 @@ function App() {
         <ReactVega
           geomType={geomType}
           defaultAggregate={aggregated}
-          dataSource={ds.dataSource}
+          dataSource={GS.dataBase[GS.currentDBIndex].dataSource}
           rows={fstate.rows}
           columns={fstate.columns}
           color={fstate.color[0]}

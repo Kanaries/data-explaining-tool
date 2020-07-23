@@ -1,7 +1,7 @@
 import titanic from './titanic.json';
-import { Record } from '../interfaces';
+import { Record, IField, DataSet } from '../interfaces';
 
-export function getTitanicData() {
+export function getTitanicData(): DataSet {
   const { dataSource, config } = titanic;
   const { Dimensions: dimensions, Measures: measures } = config;
   (dataSource as Record[]).forEach(record => {
@@ -18,9 +18,25 @@ export function getTitanicData() {
       }
     })
   })
+  const fields: IField[] = [];
+  dimensions.forEach((dim) => {
+      fields.push({
+          key: dim,
+          type: 'string',
+          analyticType: 'dimension',
+      });
+  });
+  measures.forEach((mea) => {
+      fields.push({
+          key: mea,
+          type: 'number',
+          analyticType: 'measure',
+      });
+  });
   return {
+    id: 'titanic',
+    name: '泰坦尼克号',
     dataSource,
-    dimensions,
-    measures,
+    fields
   };
 }

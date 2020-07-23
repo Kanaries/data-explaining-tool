@@ -34,3 +34,17 @@ export type SemanticType = 'quantitative' | 'nominal' | 'ordinal' | 'temporal';
 export interface Filters {
   [key: string]: any[];
 }
+
+export interface IField {
+    key: string;
+    type: string;
+    analyticType: 'dimension' | 'measure';
+}
+
+
+export interface DataSet {
+  id: string;
+  name: string;
+  fields: IField[];
+  dataSource: Record[];
+}
