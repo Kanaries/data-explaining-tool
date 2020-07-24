@@ -55,7 +55,7 @@ export class DataExplainer {
         const parentCuboid = this.engine.cube.getCuboid(dimensions);
         const parentData = filterByPredicates(parentCuboid.state, predicates);
         // console.log(parentData)
-        const knn = this.getKNN(dimensions, K_Neighbor);
+        const knn = this.getKNN('dimension', dimensions, K_Neighbor);
         const majorList: Array<{key: string; score: number; dimensions: string[]}> = [];
         const outlierList: Array<{key: string; score: number; dimensions: string[]}> = [];
         for (let extendDim of knn) {
@@ -83,7 +83,7 @@ export class DataExplainer {
     public explainBySelection(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
         // const predicates = getPredicates(selection, dimensions, []);
         // const parentCuboid = this.engine.cube.getCuboid()
-        const knn = this.getKNN(dimensions, K_Neighbor);
+        const knn = this.getKNN('dimension', dimensions, K_Neighbor);
         const majorList: Array<{ score: number; dimensions: string[] }> = [];
         const outlierList: Array<{ score: number; dimensions: string[] }> = [];
         for (let extendDim of knn) {
@@ -94,12 +94,13 @@ export class DataExplainer {
 
             let outlierNormalization = normalizeWithParent(subData, overallData, measures, false);
 
-            const outlierScore = compareDistribution(
+            let outlierScore = compareDistribution(
                 outlierNormalization.normalizedData,
                 outlierNormalization.normalizedParentData,
                 [extendDim],
                 measures
             );
+            outlierScore /= (measures.length * 2)
             outlierList.push({
                 dimensions: [extendDim],
                 score: outlierScore
@@ -111,7 +112,7 @@ export class DataExplainer {
     public explainByCorMeasures(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
         // const predicates = getPredicates(selection, dimensions, []);
         // const parentCuboid = this.engine.cube.getCuboid()
-        const knn = this.getKNN(measures, K_Neighbor);
+        const knn = this.getKNN('measure', measures, K_Neighbor);
         const outlierList: Array<{ score: number; dimensions: string[], measures: string[] }> = [];
         for (let extendMea of knn) {
             const parentCuboid = this.engine.cube.getCuboid(dimensions)
@@ -119,14 +120,20 @@ export class DataExplainer {
             const overallData = parentCuboid.state;
             const subData = filterByPredicates(cuboid.state, predicates);
 
-            let outlierNormalization = normalizeWithParent(subData, overallData, measures, false);
+            let outlierNormalization = normalizeWithParent(
+                subData,
+                overallData,
+                [extendMea],
+                false
+            );
 
-            const outlierScore = compareDistribution(
+            let outlierScore = compareDistribution(
                 outlierNormalization.normalizedData,
                 outlierNormalization.normalizedParentData,
                 dimensions,
-                measures
+                [extendMea]
             );
+            outlierScore /= 2;
             outlierList.push({
                 dimensions: dimensions,
                 score: outlierScore,
@@ -136,22 +143,22 @@ export class DataExplainer {
         }
         return outlierList;
     }
-    public getKNN(dimensions: string[] ,K_Neighbor: number = 3) {
-        const adjMatrix = this.engine.dataGraph.DG;
-        const graphDimensions = this.engine.dataGraph.dimensions;
-        const dimIndices = dimensions.map(dim => graphDimensions.indexOf(dim));
+    public getKNN(type: 'dimension' | 'measure', fields: string[] ,K_Neighbor: number = 3) {
+        const adjMatrix = type === 'dimension' ? this.engine.dataGraph.DG : this.engine.dataGraph.MG;
+        const graphFields = type === 'dimension' ? this.engine.dataGraph.dimensions : this.engine.dataGraph.measures;
+        const fieldIndices = fields.map(field => graphFields.indexOf(field));
         const neighbors: Array<{dis: number, index: number}> = [];
-        for (let dimIndex of dimIndices) {
-            for (let i = 0; i < adjMatrix[dimIndex].length; i++) {
-                if (!dimIndices.includes(i)) {
+        for (let fieldIndex of fieldIndices) {
+            for (let i = 0; i < adjMatrix[fieldIndex].length; i++) {
+                if (!fieldIndices.includes(i)) {
                     neighbors.push({
-                        dis: Math.abs(adjMatrix[dimIndex][i]),
+                        dis: Math.abs(adjMatrix[fieldIndex][i]),
                         index: i
                     })
                 }
             }
         }
         neighbors.sort((a, b) => b.dis - a.dis);
-        return neighbors.slice(0, K_Neighbor).map(f => graphDimensions[f.index]);
+        return neighbors.slice(0, K_Neighbor).map(f => graphFields[f.index]);
     }
 }

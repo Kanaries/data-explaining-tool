@@ -110,7 +110,8 @@ const DataSourcePanel: React.FC<DSPanelProps> = props => {
                             // console.log(data)
                             const result = transData(data as Record[]);
                             console.log(result);
-                            setDataSource(result.dataSource);
+                            // TODO: need fix web-data-loader issue #2
+                            setDataSource(result.dataSource.slice(0, -1));
                             setFields(result.fields);
                         });
                     }

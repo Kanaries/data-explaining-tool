@@ -13,10 +13,19 @@ import { DataExplainer } from '../insights';
 import { getPredicatesFromVegaSignals } from '../utils';
 
 const collection  = Insight.IntentionWorkerCollection.init();
-const InsightTypeMapper: { [key: string]: string } = {
-  [Insight.DefaultIWorker.cluster]: '分组区分度',
-  [Insight.DefaultIWorker.outlier]: '异常',
-  [Insight.DefaultIWorker.trend]: '趋势'
+type IReasonType = 'selection_dim_distribution' | 'selection_mea_distribution' | 'children_major_factor' | 'children_outlier';
+// const InsightTypeMapper: { [key: string]: string } = {
+//   [Insight.DefaultIWorker.cluster]: '分组区分度',
+//   [Insight.DefaultIWorker.outlier]: '异常',
+//   [Insight.DefaultIWorker.trend]: '趋势'
+//   // []: ''
+// }
+
+const ReasonTypeNames: { [key: string]: string} = {
+  'selection_dim_distribution': '选择集+新维度',
+  'selection_mea_distribution': '选择集+新度量',
+  'children_major_factor': '子节点主因',
+  'children_outlier': '子节点异常'
 }
 collection.enable(Insight.DefaultIWorker.cluster, false);
 interface SubSpace {
@@ -154,14 +163,48 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
         .setMeasures(measures)
         .preAnalysis();
       const predicates = getPredicatesFromVegaSignals(filters || {}, currentSpace.dimensions, []);
-      const ansSpaces = de.explainBySelection(predicates, currentSpace.dimensions, currentSpace.measures);
-      setRecSpaces(ansSpaces.map(space => {
-        return {
-          dimensions: [...space.dimensions, ...currentSpace.dimensions],
-          measures: currentSpace.measures,
-          significance: space.score
-        }
-      }))
+      const ansSpaces: any[] = [];
+      const dimSelectionSpaces = de.explainBySelection(predicates, currentSpace.dimensions, currentSpace.measures);
+      const meaSelectionSpaces = de.explainByCorMeasures(predicates, currentSpace.dimensions, currentSpace.measures);
+      const childrenSpaces = de.explainByChildren([], currentSpace.dimensions, currentSpace.measures);
+
+      dimSelectionSpaces.forEach(space => {
+        ansSpaces.push({
+            dimensions: [...space.dimensions, ...currentSpace.dimensions],
+            measures: currentSpace.measures,
+            significance: space.score,
+            type: 'selection_dim_distribution',
+            description: space,
+        });
+      })
+      meaSelectionSpaces.forEach(space => {
+        ansSpaces.push({
+            dimensions: currentSpace.dimensions,
+            measures: space.measures,
+            significance: space.score,
+            type: 'selection_mea_distribution',
+            description: space,
+        });
+      })
+      childrenSpaces.majorList.forEach((space) => {
+          ansSpaces.push({
+              dimensions: [...currentSpace.dimensions, ...space.dimensions],
+              measures: currentSpace.measures,
+              significance: space.score,
+              type: 'children_major_factor',
+              description: space,
+          });
+      });
+      childrenSpaces.outlierList.forEach((space) => {
+          ansSpaces.push({
+              dimensions: [...currentSpace.dimensions, ...space.dimensions],
+              measures: currentSpace.measures,
+              significance: space.score,
+              type: 'children_outlier',
+              description: space,
+          });
+      });
+      setRecSpaces(ansSpaces);
       // setLoading(true)
       // getInsightSpaces({
       // // Insight.getVisSpaces({
@@ -226,6 +269,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
         true
       );
       if (container.current) {
+        console.log(_vegaSpec)
         embed(container.current, _vegaSpec);
       }
     }
@@ -256,7 +300,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
           <RadioGroupButtons
             options={recSpaces.map((s, i) => ({
               value: s.type || '' + i,
-              label: `${s.type ? InsightTypeMapper[s.type] : '未识别'}: ${Math.round(s.significance * 100)}%`,
+              label: `${s.type ? ReasonTypeNames[s.type] : '未识别'}: ${Math.round(s.significance * 100)}%`,
             }))}
             onChange={(v, i) => {
               setVisIndex(i);
@@ -271,7 +315,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
               度量是{recSpaces[visIndex].measures.join(', ')}。<br />
               此时具有
               {recSpaces[visIndex].type
-                ? InsightTypeMapper[recSpaces[visIndex].type!]
+                ? ReasonTypeNames[recSpaces[visIndex].type!]
                 : '未识别'}{' '}
               ，显著性为{Math.round(recSpaces[visIndex].significance * 100)}%。
               <br />

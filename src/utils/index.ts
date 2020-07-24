@@ -118,6 +118,7 @@ export function checkMajorFactor(data: Record[], childrenData: Map<any, Record[]
             majorKey = key;
         }
     }
+    majorSum /= (measures.length * 2);
     return { majorKey, majorSum };
 }
 
@@ -159,6 +160,7 @@ export function checkChildOutlier(data: Record[], childrenData: Map<any, Record[
             outlierKey = key;
         }
     }
+    outlierSum /= (measures.length * 2);
     return { outlierKey, outlierSum };
 }
 export interface IPredicate {
