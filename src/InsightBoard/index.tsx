@@ -131,6 +131,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
   }, [fields]);
 
   const cookedInfo = useMemo(() => {
+    // TODO: fix auto group
     // const filteredData = filters ? applyFilters(dataSource, filters) : dataSource;
     const filteredData = dataSource;
     // console.log('filtered data', filters, filteredData)
@@ -140,15 +141,23 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
       let target = groupedData.newFields.find(
         (f) => f.name.slice(0, -7) === field.name
       );
+      // cookedDimensions.push({
+      //   name: target ? target.name : field.name,
+      //   type: target ? target.type : field.type,
+      // });
       cookedDimensions.push({
-        name: target ? target.name : field.name,
-        type: target ? target.type : field.type,
+          name: field.name,
+          type: field.type,
       });
     }
+    // return {
+    //   cookedDataSource: groupedData.groupedData,
+    //   cookedDimensions: cookedDimensions
+    // }
     return {
-      cookedDataSource: groupedData.groupedData,
-      cookedDimensions: cookedDimensions
-    }
+        cookedDataSource: dataSource,
+        cookedDimensions: cookedDimensions,
+    };
   }, [dataSource, dimsWithTypes])
   useEffect(() => {
     const { cookedDimensions, cookedDataSource } = cookedInfo;
@@ -164,9 +173,9 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
         .preAnalysis();
       const predicates = getPredicatesFromVegaSignals(filters || {}, currentSpace.dimensions, []);
       const ansSpaces: any[] = [];
-      const dimSelectionSpaces = de.explainBySelection(predicates, currentSpace.dimensions, currentSpace.measures);
-      const meaSelectionSpaces = de.explainByCorMeasures(predicates, currentSpace.dimensions, currentSpace.measures);
-      const childrenSpaces = de.explainByChildren([], currentSpace.dimensions, currentSpace.measures);
+      const dimSelectionSpaces = de.explainBySelection(predicates, currentSpace.dimensions, currentSpace.measures, 5);
+      const meaSelectionSpaces = de.explainByCorMeasures(predicates, currentSpace.dimensions, currentSpace.measures, 5);
+      const childrenSpaces = de.explainByChildren([], currentSpace.dimensions, currentSpace.measures, 5);
 
       dimSelectionSpaces.forEach(space => {
         ansSpaces.push({
@@ -298,6 +307,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
       <div style={{ display: 'flex' }}>
         <div style={{ flexBasis: '200px', flexShrink: 0 }}>
           <RadioGroupButtons
+            choosenIndex={visIndex}
             options={recSpaces.map((s, i) => ({
               value: s.type || '' + i,
               label: `${s.type ? ReasonTypeNames[s.type] : '未识别'}: ${Math.round(s.significance * 100)}%`,

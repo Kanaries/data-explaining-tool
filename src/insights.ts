@@ -1,7 +1,7 @@
 import { Insight } from 'visual-insights';
 import { Record } from './interfaces';
 import { checkMajorFactor, getPredicates, filterByPredicates, checkChildOutlier, IPredicate } from './utils';
-import { normalizeWithParent, compareDistribution } from './utils/normalization';
+import { normalizeWithParent, compareDistribution, normalizeByMeasures, getDistributionDifference } from './utils/normalization';
 
 export class DataExplainer {
     public dataSource: Record[];
@@ -107,58 +107,66 @@ export class DataExplainer {
             })
             // compare overall and subdata. set score. (major and outlier)
         }
+        outlierList.sort((a, b) => b.score - a.score)
         return outlierList;
     }
     public explainByCorMeasures(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
         // const predicates = getPredicates(selection, dimensions, []);
         // const parentCuboid = this.engine.cube.getCuboid()
         const knn = this.getKNN('measure', measures, K_Neighbor);
-        const outlierList: Array<{ score: number; dimensions: string[], measures: string[] }> = [];
+        const ans: Array<{ score: number; dimensions: string[]; measures: string[]; max: number;  min: number }> = [];
+        const cuboid = this.engine.cube.getCuboid(dimensions);
+        const normalizedState = normalizeByMeasures(cuboid.state, [...knn, ...measures]);
         for (let extendMea of knn) {
-            const parentCuboid = this.engine.cube.getCuboid(dimensions)
-            const cuboid = parentCuboid;
-            const overallData = parentCuboid.state;
-            const subData = filterByPredicates(cuboid.state, predicates);
-
-            let outlierNormalization = normalizeWithParent(
-                subData,
-                overallData,
-                [extendMea],
-                false
-            );
-
-            let outlierScore = compareDistribution(
-                outlierNormalization.normalizedData,
-                outlierNormalization.normalizedParentData,
+            let maxDiff = 0;
+            let minDiff = 1;
+            for (let baseMeasure of measures) {
+                let diffScore = getDistributionDifference(normalizedState, dimensions, baseMeasure, extendMea) / 2;
+                maxDiff = Math.max(maxDiff, diffScore);
+                minDiff = Math.min(minDiff, diffScore);
+            }
+            ans.push({
                 dimensions,
-                [extendMea]
-            );
-            outlierScore /= 2;
-            outlierList.push({
-                dimensions: dimensions,
-                score: outlierScore,
-                measures: [extendMea]
+                score: Math.max(1 - minDiff, maxDiff),
+                measures: [extendMea],
+                max: maxDiff,
+                min: minDiff
             })
             // compare overall and subdata. set score. (major and outlier)
         }
-        return outlierList;
+        ans.sort((a, b) => b.score - a.score);
+        return ans;
     }
-    public getKNN(type: 'dimension' | 'measure', fields: string[] ,K_Neighbor: number = 3) {
+    public getKNN(type: 'dimension' | 'measure', fields: string[], K_Neighbor: number = 3, threshold = 0) {
         const adjMatrix = type === 'dimension' ? this.engine.dataGraph.DG : this.engine.dataGraph.MG;
         const graphFields = type === 'dimension' ? this.engine.dataGraph.dimensions : this.engine.dataGraph.measures;
-        const fieldIndices = fields.map(field => graphFields.indexOf(field));
-        const neighbors: Array<{dis: number, index: number}> = [];
+        const fieldIndices = fields.map(field => {
+            let index = graphFields.indexOf(field);
+            if (index === -1) {
+                // TODO: provide a better solution for group dimension.
+                index = graphFields.indexOf(field + '(group)')
+            }
+            return index;
+        });
+        const neighbors: Array<{dis: number, index: number, imp: number}> = [];
         for (let fieldIndex of fieldIndices) {
             for (let i = 0; i < adjMatrix[fieldIndex].length; i++) {
                 if (!fieldIndices.includes(i)) {
-                    neighbors.push({
-                        dis: Math.abs(adjMatrix[fieldIndex][i]),
-                        index: i
-                    })
+                    const dis = Math.abs(adjMatrix[fieldIndex][i]);
+                    const fieldKey = graphFields[i];
+                    const tf = this.engine.fields.find(f => f.key === fieldKey);
+                    if (dis >= threshold) {
+                        neighbors.push({
+                            dis,
+                            index: i,
+                            imp: tf?.domain.size || Infinity,
+                        });
+                    }
                 }
             }
         }
-        neighbors.sort((a, b) => b.dis - a.dis);
+
+        neighbors.sort((a, b) => b.dis / b.imp - a.dis / a.imp);
         return neighbors.slice(0, K_Neighbor).map(f => graphFields[f.index]);
     }
 }

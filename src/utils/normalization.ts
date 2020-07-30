@@ -80,3 +80,35 @@ export function compareDistribution (distribution1: Record[], distribution2: Rec
     }
     return score;
 }
+
+export function normalizeByMeasures (dataSource: Record[], measures: string[]) {
+    let sums: Map<string, number> = new Map();
+
+    measures.forEach(mea => {
+        sums.set(mea, 0);
+    })
+
+    dataSource.forEach(record => {
+        measures.forEach(mea => {
+            sums.set(mea, sums.get(mea)! + Math.abs(record[mea]));
+        })
+    })
+
+    const ans: Record[] = [];
+    dataSource.forEach(record => {
+        const norRecord: Record = { ...record };
+        measures.forEach(mea => {
+            norRecord[mea] /= sums.get(mea)!;
+        })
+        ans.push(norRecord);
+    });
+    return ans;
+}
+
+export function getDistributionDifference(dataSource: Record[], dimensions: string[], measure1: string, measure2: string): number {
+    let score = 0;
+    for (let record of dataSource) {
+        score += Math.abs(record[measure1] - record[measure2])
+    }
+    return score;
+}

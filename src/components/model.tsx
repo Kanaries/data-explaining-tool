@@ -3,6 +3,8 @@ import styled from 'styled-components';
 import { CloseOutlined } from '@ant-design/icons'
 const Container = styled.div`
   width: 880px;
+  max-height: 800px;
+  overflow: auto;
   > div.header {
     background-color: #f0f0f0;
     display: flex;

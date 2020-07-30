@@ -48,3 +48,8 @@ export interface DataSet {
   fields: IField[];
   dataSource: Record[];
 }
+
+export interface IFieldNeighbor {
+  key: string;
+  cc: number;
+}
