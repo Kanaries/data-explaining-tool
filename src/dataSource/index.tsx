@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { Button, TextField } from '@tableau/tableau-ui';
 import { FileReader } from '@kanaries/web-data-loader';
 import { Record, IField } from '../interfaces';

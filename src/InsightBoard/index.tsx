@@ -1,16 +1,12 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Record, Field, SemanticType, Filters } from '../interfaces';
 import { Insight, Utils, UnivariateSummary, specification } from 'visual-insights';
-import { Specification } from 'visual-insights/build/esm/commonTypes';
 import { baseVis } from './std2vegaSpec';
 import embed from 'vega-embed';
 import aggregate from 'cube-core';
-import { getInsightSpaces, getExplaination } from '../services';
+import { getExplaination } from '../services';
 import { Spinner } from '@tableau/tableau-ui';
 import RadioGroupButtons from './radioGroupButtons';
-import { field } from 'vega';
-import { DataExplainer } from '../insights';
-import { getPredicatesFromVegaSignals } from '../utils';
 
 const collection  = Insight.IntentionWorkerCollection.init();
 type IReasonType = 'selection_dim_distribution' | 'selection_mea_distribution' | 'children_major_factor' | 'children_outlier';
@@ -31,39 +27,6 @@ collection.enable(Insight.DefaultIWorker.cluster, false);
 interface SubSpace {
   dimensions: string[];
   measures: string[];
-}
-function containSpace (space1: SubSpace, space2: SubSpace): boolean {
-  if (space1.dimensions.length <= space2.dimensions.length && space1.measures.length <= space2.measures.length) return false;
-  let m = true;
-  let d = true
-  for (let dimInSpace2 of space2.dimensions) {
-    if (!space1.dimensions.includes(dimInSpace2)) {
-      d = false;
-      break;
-    }
-  }
-  for (let meaInSpace2 of space2.measures) {
-    if (!space1.measures.includes(meaInSpace2)) {
-      m = false;
-      break;
-    }
-  }
-  return d || m;
-}
-
-function shareSpace(space1: SubSpace, space2: SubSpace): boolean {
-
-  for (let dimInSpace2 of space2.dimensions) {
-    if (space1.dimensions.includes(dimInSpace2)) {
-      return true;
-    }
-  }
-  for (let meaInSpace2 of space2.measures) {
-    if (space1.measures.includes(meaInSpace2)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function spec(dataSource: Record[], dimensions: string[], measures: string[], fieldTypes: Array<{type: SemanticType; name: string}>) {
@@ -115,6 +78,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
   const [visIndex, setVisIndex] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const container = useRef<HTMLDivElement>(null);
+
   const dimsWithTypes = useMemo(() => {
     const dimensions = fields
       .filter((f) => f.type === 'D')
@@ -122,6 +86,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
       .filter((f) => !Utils.isFieldUnique(dataSource, f));
     return UnivariateSummary.getAllFieldTypes(dataSource, dimensions);
   }, [fields, dataSource])
+
   const measWithTypes = useMemo(() => {
     const measures = fields.filter((f) => f.type === 'M').map((f) => f.id);
     return measures.map((m) => ({
@@ -130,48 +95,19 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
     }));
   }, [fields]);
 
-  const cookedInfo = useMemo(() => {
-    // TODO: fix auto group
-    // const filteredData = filters ? applyFilters(dataSource, filters) : dataSource;
-    const filteredData = dataSource;
-    // console.log('filtered data', filters, filteredData)
-    const groupedData = UnivariateSummary.groupFields(filteredData, dimsWithTypes);
-    const cookedDimensions: Array<{ name: string; type: SemanticType }> = [];
-    for (let field of groupedData.fields) {
-      let target = groupedData.newFields.find(
-        (f) => f.name.slice(0, -7) === field.name
-      );
-      // cookedDimensions.push({
-      //   name: target ? target.name : field.name,
-      //   type: target ? target.type : field.type,
-      // });
-      cookedDimensions.push({
-          name: field.name,
-          type: field.type,
-      });
-    }
-    // return {
-    //   cookedDataSource: groupedData.groupedData,
-    //   cookedDimensions: cookedDimensions
-    // }
-    return {
-        cookedDataSource: dataSource,
-        cookedDimensions: cookedDimensions,
-    };
-  }, [dataSource, dimsWithTypes])
   useEffect(() => {
-    const { cookedDimensions, cookedDataSource } = cookedInfo;
-    const measures = fields.filter((f) => f.type === 'M').map((f) => f.id);
-    if (cookedDimensions.length > 0 && measures.length > 0 && cookedDataSource.length > 0) {
+    if (dimsWithTypes.length > 0 && measWithTypes.length > 0 && dataSource.length > 0) {
+      const measures = fields.filter((f) => f.type === 'M').map((f) => f.id);
+      const dimensions = dimsWithTypes.map(d => d.name);
       const currentSpace: SubSpace = {
           dimensions: viewDs.map((f) => f.id),
           measures: viewMs.map((f) => f.id),
       };
       setLoading(true);
       getExplaination({
-        dimensions: cookedDimensions.map(d => d.name),
+        dimensions,
         measures,
-        dataSource: cookedDataSource,
+        dataSource,
         currentSpace,
         filters
       }).then(spaces => {
@@ -179,84 +115,12 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
         setRecSpaces(spaces);
         setLoading(false);
       })
-      // const de = new DataExplainer(cookedDataSource);
-      // de.setDimensions(cookedDimensions.map(d => d.name))
-      //   .setMeasures(measures)
-      //   .preAnalysis();
-      // const predicates = getPredicatesFromVegaSignals(filters || {}, currentSpace.dimensions, []);
-      // const ansSpaces: any[] = [];
-      // const dimSelectionSpaces = de.explainBySelection(predicates, currentSpace.dimensions, currentSpace.measures, 5);
-      // const meaSelectionSpaces = de.explainByCorMeasures(predicates, currentSpace.dimensions, currentSpace.measures, 5);
-      // const childrenSpaces = de.explainByChildren([], currentSpace.dimensions, currentSpace.measures, 5);
-
-      // dimSelectionSpaces.forEach(space => {
-      //   ansSpaces.push({
-      //       dimensions: [...space.dimensions, ...currentSpace.dimensions],
-      //       measures: currentSpace.measures,
-      //       significance: space.score,
-      //       type: 'selection_dim_distribution',
-      //       description: space,
-      //   });
-      // })
-      // meaSelectionSpaces.forEach(space => {
-      //   ansSpaces.push({
-      //       dimensions: currentSpace.dimensions,
-      //       measures: space.measures,
-      //       significance: space.score,
-      //       type: 'selection_mea_distribution',
-      //       description: space,
-      //   });
-      // })
-      // childrenSpaces.majorList.forEach((space) => {
-      //     ansSpaces.push({
-      //         dimensions: [...currentSpace.dimensions, ...space.dimensions],
-      //         measures: currentSpace.measures,
-      //         significance: space.score,
-      //         type: 'children_major_factor',
-      //         description: space,
-      //     });
-      // });
-      // childrenSpaces.outlierList.forEach((space) => {
-      //     ansSpaces.push({
-      //         dimensions: [...currentSpace.dimensions, ...space.dimensions],
-      //         measures: currentSpace.measures,
-      //         significance: space.score,
-      //         type: 'children_outlier',
-      //         description: space,
-      //     });
-      // });
-      // setRecSpaces(ansSpaces);
-      // setLoading(true)
-      // getInsightSpaces({
-      // // Insight.getVisSpaces({
-      //   dimensions: cookedDimensions.map(d => d.name),
-      //   measures,
-      //   dataSource: cookedDataSource,
-        
-      //   max_dimension_num_in_view: viewDs.length + 2,
-      //   max_measure_num_in_view: viewMs.length + 1
-      // }).then(spaces => {
-      //   // console.log('ans len', spaces.length)
-      //   const relativeSpaces = spaces
-      //     .filter(space => space.significance > 0.4)
-      //     .filter(space => {
-      //       return containSpace(space, currentSpace);
-      //     })
-      //     .map(space => ({
-      //       ...space,
-      //       score: space.impurity! / space.significance
-      //     }))
-      //     .sort((a, b) => (a.score || 0) - (b.score || 0))
-      //     .slice(0, 5)
-      //   setRecSpaces(relativeSpaces)
-      //   setLoading(false)
-      // })
     }
-  }, [fields, viewDs, viewMs, cookedInfo, measWithTypes, filters])
+  }, [fields, viewDs, viewMs, measWithTypes, filters, dimsWithTypes, measWithTypes, dataSource])
 
   const fieldsWithType = useMemo(() => {
-    return [...cookedInfo.cookedDimensions, ...measWithTypes];
-  }, [cookedInfo.cookedDimensions, measWithTypes])
+    return [...dimsWithTypes, ...measWithTypes];
+  }, [dimsWithTypes, measWithTypes])
 
   useEffect(() => {
     const RecSpace = recSpaces[visIndex];
@@ -264,7 +128,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
       const aggData = aggregate({
         dimensions: RecSpace.dimensions,
         measures: RecSpace.measures,
-        dataSource: cookedInfo.cookedDataSource,
+        dataSource: dataSource,
         asFields: RecSpace.measures,
         operator: 'sum',
       });
@@ -276,7 +140,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
       );
       const _vegaSpec = baseVis(
         result.schema,
-        result.schema.geomType && result.schema.geomType[0] === 'point' ? cookedInfo.cookedDataSource : result.aggData,
+        result.schema.geomType && result.schema.geomType[0] === 'point' ? dataSource : result.aggData,
         // result.aggData,
         RecSpace.dimensions,
         RecSpace.measures,
@@ -294,7 +158,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
         embed(container.current, _vegaSpec);
       }
     }
-  }, [visIndex, recSpaces, fieldsWithType, cookedInfo])
+  }, [visIndex, recSpaces, fieldsWithType, dataSource])
 
   const FilterDesc = useMemo<string>(() => {
     if (filters) {

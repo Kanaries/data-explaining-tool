@@ -8,10 +8,8 @@ import {
   DraggableLocation,
 } from "react-beautiful-dnd";
 import styled from "styled-components";
-// import Select, { Option } from "./select";
-import { Select } from 'antd';
 import produce from "immer";
-import { FieldListContainer, FieldsContainer, FieldLabel } from "./components";
+import { FieldListContainer, FieldsContainer } from "./components";
 import { move, reorder } from "./utils";
 import { Field } from "../interfaces";
 import { Container } from '../components/container'
