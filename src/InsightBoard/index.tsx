@@ -5,7 +5,7 @@ import { Specification } from 'visual-insights/build/esm/commonTypes';
 import { baseVis } from './std2vegaSpec';
 import embed from 'vega-embed';
 import aggregate from 'cube-core';
-import { getInsightSpaces } from '../services';
+import { getInsightSpaces, getExplaination } from '../services';
 import { Spinner } from '@tableau/tableau-ui';
 import RadioGroupButtons from './radioGroupButtons';
 import { field } from 'vega';
@@ -164,56 +164,68 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
     const measures = fields.filter((f) => f.type === 'M').map((f) => f.id);
     if (cookedDimensions.length > 0 && measures.length > 0 && cookedDataSource.length > 0) {
       const currentSpace: SubSpace = {
-        dimensions: viewDs.map(f => f.id),
-        measures: viewMs.map(f => f.id)
-      }
-      const de = new DataExplainer(cookedDataSource);
-      de.setDimensions(cookedDimensions.map(d => d.name))
-        .setMeasures(measures)
-        .preAnalysis();
-      const predicates = getPredicatesFromVegaSignals(filters || {}, currentSpace.dimensions, []);
-      const ansSpaces: any[] = [];
-      const dimSelectionSpaces = de.explainBySelection(predicates, currentSpace.dimensions, currentSpace.measures, 5);
-      const meaSelectionSpaces = de.explainByCorMeasures(predicates, currentSpace.dimensions, currentSpace.measures, 5);
-      const childrenSpaces = de.explainByChildren([], currentSpace.dimensions, currentSpace.measures, 5);
+          dimensions: viewDs.map((f) => f.id),
+          measures: viewMs.map((f) => f.id),
+      };
+      setLoading(true);
+      getExplaination({
+        dimensions: cookedDimensions.map(d => d.name),
+        measures,
+        dataSource: cookedDataSource,
+        currentSpace,
+        filters
+      }).then(spaces => {
+        console.log('finish')
+        setRecSpaces(spaces);
+        setLoading(false);
+      })
+      // const de = new DataExplainer(cookedDataSource);
+      // de.setDimensions(cookedDimensions.map(d => d.name))
+      //   .setMeasures(measures)
+      //   .preAnalysis();
+      // const predicates = getPredicatesFromVegaSignals(filters || {}, currentSpace.dimensions, []);
+      // const ansSpaces: any[] = [];
+      // const dimSelectionSpaces = de.explainBySelection(predicates, currentSpace.dimensions, currentSpace.measures, 5);
+      // const meaSelectionSpaces = de.explainByCorMeasures(predicates, currentSpace.dimensions, currentSpace.measures, 5);
+      // const childrenSpaces = de.explainByChildren([], currentSpace.dimensions, currentSpace.measures, 5);
 
-      dimSelectionSpaces.forEach(space => {
-        ansSpaces.push({
-            dimensions: [...space.dimensions, ...currentSpace.dimensions],
-            measures: currentSpace.measures,
-            significance: space.score,
-            type: 'selection_dim_distribution',
-            description: space,
-        });
-      })
-      meaSelectionSpaces.forEach(space => {
-        ansSpaces.push({
-            dimensions: currentSpace.dimensions,
-            measures: space.measures,
-            significance: space.score,
-            type: 'selection_mea_distribution',
-            description: space,
-        });
-      })
-      childrenSpaces.majorList.forEach((space) => {
-          ansSpaces.push({
-              dimensions: [...currentSpace.dimensions, ...space.dimensions],
-              measures: currentSpace.measures,
-              significance: space.score,
-              type: 'children_major_factor',
-              description: space,
-          });
-      });
-      childrenSpaces.outlierList.forEach((space) => {
-          ansSpaces.push({
-              dimensions: [...currentSpace.dimensions, ...space.dimensions],
-              measures: currentSpace.measures,
-              significance: space.score,
-              type: 'children_outlier',
-              description: space,
-          });
-      });
-      setRecSpaces(ansSpaces);
+      // dimSelectionSpaces.forEach(space => {
+      //   ansSpaces.push({
+      //       dimensions: [...space.dimensions, ...currentSpace.dimensions],
+      //       measures: currentSpace.measures,
+      //       significance: space.score,
+      //       type: 'selection_dim_distribution',
+      //       description: space,
+      //   });
+      // })
+      // meaSelectionSpaces.forEach(space => {
+      //   ansSpaces.push({
+      //       dimensions: currentSpace.dimensions,
+      //       measures: space.measures,
+      //       significance: space.score,
+      //       type: 'selection_mea_distribution',
+      //       description: space,
+      //   });
+      // })
+      // childrenSpaces.majorList.forEach((space) => {
+      //     ansSpaces.push({
+      //         dimensions: [...currentSpace.dimensions, ...space.dimensions],
+      //         measures: currentSpace.measures,
+      //         significance: space.score,
+      //         type: 'children_major_factor',
+      //         description: space,
+      //     });
+      // });
+      // childrenSpaces.outlierList.forEach((space) => {
+      //     ansSpaces.push({
+      //         dimensions: [...currentSpace.dimensions, ...space.dimensions],
+      //         measures: currentSpace.measures,
+      //         significance: space.score,
+      //         type: 'children_outlier',
+      //         description: space,
+      //     });
+      // });
+      // setRecSpaces(ansSpaces);
       // setLoading(true)
       // getInsightSpaces({
       // // Insight.getVisSpaces({

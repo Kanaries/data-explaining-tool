@@ -1,6 +1,7 @@
 import { DataExplainer } from '../insights';
 import fs from 'fs';
 import path from 'path';
+import { getPredicates } from '../utils';
 const testData = [
     {
         name: 'Alice',
@@ -59,8 +60,9 @@ test('explainByChildren', () => {
         .setMeasures(['height'])
         .preAnalysis();
     // const ans = de.explainByMajorFactor([{ age: 18 }], ['age'], ['height'], 2);
+    const predicates = getPredicates([{ age: '18' }, { age: '17' }], ['age'], ['height']);
     const { majorList, outlierList } = de.explainByChildren(
-      [{ age: '18' }, { age: '17' }],
+      predicates,
       ['age'],
       ['height'],
       2
@@ -74,8 +76,9 @@ test('explainBySelection', () => {
     const de = new DataExplainer(testData);
     de.setDimensions(['name', 'gender', 'age']).setMeasures(['height']).preAnalysis();
     // const ans = de.explainByMajorFactor([{ age: 18 }], ['age'], ['height'], 2);
+    const predicates = getPredicates([{ age: '18' }], ['age'], ['height']);
     const outlierList = de.explainBySelection(
-        [{ age: '18' }],
+        predicates,
         ['age'],
         ['height'],
         2
@@ -106,15 +109,16 @@ test('harder case', () => {
     de.setDimensions(dimensions)
         .setMeasures(measures)
         .preAnalysis();
-    const ans = de.explainBySelection([
-        {
-            "Pclass": "3",
-        }
-    ], ['Pclass'], ['Survived'], 10)
+    const predicates = getPredicates([{ "Pclass": "3" }], ['Pclass'], ['Survived']);
+    const ans = de.explainBySelection(predicates, ['Pclass'], ['Survived'], 10)
     console.log(ans)
     expect(ans.length > 0).toBe(true);
-    const { majorList, outlierList } = de.explainByChildren([{ Pclass: '1'}, { Pclass: '2'}, { Pclass: '3'}],
-    ['Pclass'], ['Survived'], 10)
+    const predicates2 = getPredicates(
+        [{ Pclass: '1' }, { Pclass: '2' }, { Pclass: '3' }],
+        ['Pclass'],
+        ['Survived']
+    );
+    const { majorList, outlierList } = de.explainByChildren(predicates2, ['Pclass'], ['Survived'], 10)
     console.log({
         majorList,
         outlierList

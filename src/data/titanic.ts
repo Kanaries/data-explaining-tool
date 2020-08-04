@@ -1,5 +1,6 @@
 import titanic from './titanic.json';
 import { Record, IField, DataSet } from '../interfaces';
+import { Cleaner } from 'visual-insights';
 
 export function getTitanicData(): DataSet {
   const { dataSource, config } = titanic;
@@ -36,7 +37,7 @@ export function getTitanicData(): DataSet {
   return {
     id: 'titanic',
     name: '泰坦尼克号',
-    dataSource,
+    dataSource: Cleaner.dropNull(dataSource, dimensions, measures),
     fields
   };
 }
