@@ -7,7 +7,7 @@ import { getExplaination, IVisSpace } from '../services';
 import { Spinner } from '@tableau/tableau-ui';
 import RadioGroupButtons from './radioGroupButtons';
 import { IExplaination } from '../insights';
-import { getPredicatesFromVegaSignals } from '../utils';
+import { getPredicatesFromVegaSignals, IPredicate } from '../utils';
 
 const collection  = Insight.IntentionWorkerCollection.init();
 type IReasonType = 'selection_dim_distribution' | 'selection_mea_distribution' | 'children_major_factor' | 'children_outlier';
@@ -86,22 +86,26 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
     const RecSpace = recSpaces[visIndex];
     const visSpec = visSpaces[visIndex];
     if (container.current && RecSpace && visSpec) {
-
+      const usePredicates: boolean =
+          RecSpace.type === 'selection_dim_distribution' ||
+          RecSpace.type === 'selection_mea_distribution';
       const _vegaSpec = baseVis(
-        visSpec.schema,
-        visSpec.schema.geomType && visSpec.schema.geomType[0] === 'point' ? dataSource : visSpec.dataView,
-        // result.aggData,
-        RecSpace.dimensions,
-        RecSpace.measures,
-        RecSpace.predicates,
-        RecSpace.measures.map((m) => ({
-          op: 'sum',
-          field: m,
-          as: m,
-        })),
-        fieldsWithType as any,
-        true,
-        true
+          visSpec.schema,
+          visSpec.schema.geomType && visSpec.schema.geomType[0] === 'point'
+              ? dataSource
+              : visSpec.dataView,
+          // result.aggData,
+          [...RecSpace.dimensions, ...RecSpace.extendDs],
+          [...RecSpace.measures, ...RecSpace.extendMs],
+          usePredicates ? RecSpace.predicates : null,
+          [...RecSpace.measures, ...RecSpace.extendMs].map((m) => ({
+              op: 'sum',
+              field: m,
+              as: m,
+          })),
+          fieldsWithType as any,
+          true,
+          true
       );
       if (container.current) {
         console.log(_vegaSpec)

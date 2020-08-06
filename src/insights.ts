@@ -249,13 +249,24 @@ export class DataExplainer {
     public getVisSpec (spaces: IExplaination[]) {
         const engine = this.engine;
         return spaces.map(space => {
-            const visSpace: Insight.InsightSpace = {
-                dimensions: space.extendDs.length > 0 ? space.extendDs : space.dimensions,
-                measures: space.extendMs.length > 0 ? space.extendMs : space.measures,
-                significance: space.score,
-                score: space.score,
-                description: space.description
-            };
+            let visSpace: Insight.InsightSpace;
+            if (space.type === 'children_major_factor' || space.type === 'children_outlier') {
+                visSpace = {
+                    dimensions: [...space.extendDs, ...space.dimensions],
+                    measures: space.extendMs.length > 0 ? space.extendMs : space.measures,
+                    significance: space.score,
+                    score: space.score,
+                    description: space.description,
+                };
+            } else {
+                visSpace = {
+                    dimensions: space.extendDs.length > 0 ? space.extendDs : space.dimensions,
+                    measures: space.extendMs.length > 0 ? space.extendMs : space.measures,
+                    significance: space.score,
+                    score: space.score,
+                    description: space.description,
+                };
+            }
             return {
                 schema: engine.specification(visSpace).schema,
                 dataView: engine.cube.getCuboid([...space.dimensions, ...space.extendDs]).state

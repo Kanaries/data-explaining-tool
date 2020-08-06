@@ -1,4 +1,3 @@
-
 import { Specification } from 'visual-insights/build/esm/commonTypes';
 import { Record, SemanticType } from '../interfaces';
 import { deepcopy } from 'visual-insights/build/esm/utils';
@@ -15,7 +14,7 @@ export function baseVis(
   dataSource: Record[],
   dimensions: string[],
   measures: string[],
-  predicates: IPredicate[],
+  predicates: IPredicate[] | null,
   aggregatedMeasures: Array<{ op: string; field: string; as: string }>,
   fieldFeatures: Array<{name: string; type: SemanticType}>,
   defaultAggregated?: boolean,
@@ -95,6 +94,13 @@ export function baseVis(
   if (!defaultStack && opacity.length === 0) {
     basicSpec.encoding.opacity = { value: 0.7 };
   }
+  // 真TMD小学生代码
+  if (predicates === null) {
+    return {
+      ...spec,
+      ...basicSpec
+    }
+  }
   const basicSpecFilter = deepcopy(basicSpec);
   basicSpec.mark.opacity = 0.9;
   basicSpec.mark.color = '#8c8c8c';
@@ -113,7 +119,7 @@ export function baseVis(
     }
     return filter
   })
-  if (dimensions.length > 2 || measures.length >= 2) {
+  if (color.length + size.length + opacity.length + page.length > 0) {
     spec = {
         ...spec,
         vconcat: [basicSpec, basicSpecFilter],
