@@ -1,6 +1,8 @@
 
 import { Specification } from 'visual-insights/build/esm/commonTypes';
 import { Record, SemanticType } from '../interfaces';
+import { deepcopy } from 'visual-insights/build/esm/utils';
+import { IPredicate } from '../utils';
 export const geomTypeMap: { [key: string]: any } = {
   interval: 'bar',
   line: 'line',
@@ -13,6 +15,7 @@ export function baseVis(
   dataSource: Record[],
   dimensions: string[],
   measures: string[],
+  predicates: IPredicate[],
   aggregatedMeasures: Array<{ op: string; field: string; as: string }>,
   fieldFeatures: Array<{name: string; type: SemanticType}>,
   defaultAggregated?: boolean,
@@ -58,6 +61,7 @@ export function baseVis(
     data: {
       values: dataSource,
     },
+    transform: []
   };
   let basicSpec: any = {
     width: chartWidth,
@@ -76,6 +80,9 @@ export function baseVis(
         field: adjustField(fieldMap[channel]),
         type: getFieldType(fieldMap[channel]),
       };
+      if (getFieldType(fieldMap[channel]) === 'quantitative' && defaultAggregated) {
+        basicSpec.encoding[channel].aggregate = 'sum';
+      }
       if (
         ['x', 'y'].includes(channel) &&
         getFieldType(fieldMap[channel]) === 'quantitative' &&
@@ -88,30 +95,34 @@ export function baseVis(
   if (!defaultStack && opacity.length === 0) {
     basicSpec.encoding.opacity = { value: 0.7 };
   }
-  if (page.length === 0) {
+  const basicSpecFilter = deepcopy(basicSpec);
+  basicSpec.mark.opacity = 0.9;
+  basicSpec.mark.color = '#8c8c8c';
+  // basicSpecFilter.mark.color = '#f5222d';
+  basicSpecFilter.mark.opacity = 0.9;
+  basicSpecFilter.transform = predicates.map(pre => {
+    const filter: any = {
+      filter: {
+        field: pre.key,
+      }
+    };
+    if (pre.type === 'continuous') {
+      filter.filter.range = pre.range
+    } else {
+      filter.filter.oneOf = [...pre.range.values()]
+    }
+    return filter
+  })
+  if (dimensions.length > 2 || measures.length >= 2) {
     spec = {
-      ...spec,
-      ...basicSpec,
+        ...spec,
+        vconcat: [basicSpec, basicSpecFilter],
     };
-  } else if (page.length > 0) {
-    basicSpec.transform = [
-      { filter: { selection: 'brush' } },
-      defaultAggregated
-        ? {
-            aggregate: aggregatedMeasures,
-            groupby: dimensions.filter((dim) => dim !== page[0]),
-          }
-        : null,
-    ].filter(Boolean);
-    let sliderSpec = {
-      width: chartWidth,
-      mark: 'tick',
-      selection: { brush: { encodings: ['x'], type: 'interval' } },
-      encoding: {
-        x: { field: page[0], type: getFieldType(page[0]) },
-      },
+  } else {
+    spec = {
+        ...spec,
+        layer: [basicSpec, basicSpecFilter],
     };
-    spec.vconcat = [basicSpec, sliderSpec];
   }
   return spec;
 }

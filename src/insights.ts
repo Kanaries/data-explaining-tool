@@ -2,7 +2,16 @@ import { Insight } from 'visual-insights';
 import { Record } from './interfaces';
 import { checkMajorFactor, getPredicates, filterByPredicates, checkChildOutlier, IPredicate } from './utils';
 import { normalizeWithParent, compareDistribution, normalizeByMeasures, getDistributionDifference } from './utils/normalization';
-
+export interface IExplaination {
+    dimensions: string[];
+    measures: string[];
+    extendDs: string[];
+    extendMs: string[];
+    type: string;
+    score: number;
+    description: any;
+    predicates: IPredicate[];
+}
 export class DataExplainer {
     public dataSource: Record[];
     private dimensions: string[];
@@ -41,9 +50,77 @@ export class DataExplainer {
             .buildCube();
         return this;
     }
-    public explain (selection: Record[], dimensions: string[], measures: string[]) {
-        const predicates = getPredicates(selection, dimensions, measures);
+    public explain (predicates: IPredicate[], dimensions: string[], measures: string[], threshold: number = 0.2): IExplaination[] {
+        // const predicates = getPredicates(selection, dimensions, measures);
         // 讨论：知道selection，但是分析的维度是什么？
+        const dimSelectionSpaces = this.explainBySelection(
+            predicates,
+            dimensions,
+            measures,
+            5
+        );
+        const meaSelectionSpaces = this.explainByCorMeasures(
+            predicates,
+            dimensions,
+            measures,
+            5
+        );
+        const childrenSpaces = this.explainByChildren(
+            [],
+            dimensions,
+            measures,
+            5
+        );
+        const ansSpaces: IExplaination[] = [];
+        dimSelectionSpaces.forEach((space) => {
+            ansSpaces.push({
+                dimensions,
+                extendDs: space.dimensions,
+                measures,
+                extendMs: [],
+                score: space.score,
+                type: 'selection_dim_distribution',
+                description: space,
+                predicates
+            });
+        });
+        meaSelectionSpaces.forEach((space) => {
+            ansSpaces.push({
+                dimensions: dimensions,
+                extendDs: [],
+                extendMs: space.measures,
+                measures,
+                score: space.score,
+                type: 'selection_mea_distribution',
+                description: space,
+                predicates
+            });
+        });
+        childrenSpaces.majorList.forEach((space) => {
+            ansSpaces.push({
+                dimensions,
+                extendDs: space.dimensions,
+                measures,
+                extendMs: [],
+                score: space.score,
+                type: 'children_major_factor',
+                description: space,
+                predicates
+            });
+        });
+        childrenSpaces.outlierList.forEach((space) => {
+            ansSpaces.push({
+                dimensions,
+                extendDs: space.dimensions,
+                measures,
+                extendMs: [],
+                score: space.score,
+                type: 'children_outlier',
+                description: space,
+                predicates
+            });
+        });
+        return ansSpaces.filter(space => space.score >= threshold);
     }
     public explainByChildren(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
         // 1. find most relative dimensions(topK)
@@ -168,5 +245,21 @@ export class DataExplainer {
 
         neighbors.sort((a, b) => b.dis / b.imp - a.dis / a.imp);
         return neighbors.slice(0, K_Neighbor).map(f => graphFields[f.index]);
+    }
+    public getVisSpec (spaces: IExplaination[]) {
+        const engine = this.engine;
+        return spaces.map(space => {
+            const visSpace: Insight.InsightSpace = {
+                dimensions: space.extendDs.length > 0 ? space.extendDs : space.dimensions,
+                measures: space.extendMs.length > 0 ? space.extendMs : space.measures,
+                significance: space.score,
+                score: space.score,
+                description: space.description
+            };
+            return {
+                schema: engine.specification(visSpace).schema,
+                dataView: engine.cube.getCuboid([...space.dimensions, ...space.extendDs]).state
+            };
+        })
     }
 }

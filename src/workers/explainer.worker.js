@@ -25,63 +25,17 @@ function getExplaination(e) {
         const de = new DataExplainer(dataSource);
         de.setDimensions(dimensions).setMeasures(measures).preAnalysis();
         // const ansSpaces: Insight.InsightSpace[] = [];
-        const ansSpaces = [];
-        const dimSelectionSpaces = de.explainBySelection(
-            predicates,
-            currentSpace.dimensions,
-            currentSpace.measures,
-            5
-        );
-        const meaSelectionSpaces = de.explainByCorMeasures(
-            predicates,
-            currentSpace.dimensions,
-            currentSpace.measures,
-            5
-        );
-        const childrenSpaces = de.explainByChildren(
-            [],
-            currentSpace.dimensions,
-            currentSpace.measures,
-            5
-        );
-
-        dimSelectionSpaces.forEach((space) => {
-            ansSpaces.push({
-                dimensions: [...space.dimensions, ...currentSpace.dimensions],
-                measures: currentSpace.measures,
-                significance: space.score,
-                type: 'selection_dim_distribution',
-                description: space,
-            });
+        const ansSpaces = de.explain(predicates, currentSpace.dimensions, currentSpace.measures);
+        const visSpaces = de.getVisSpec(ansSpaces);
+        const fields = de.engine.fields;
+        self.postMessage({
+            explainations: ansSpaces,
+            visSpaces,
+            fieldsWithSemanticType: fields.map(f => ({
+                key: f.key,
+                type: f.semanticType
+            }))
         });
-        meaSelectionSpaces.forEach((space) => {
-            ansSpaces.push({
-                dimensions: currentSpace.dimensions,
-                measures: space.measures,
-                significance: space.score,
-                type: 'selection_mea_distribution',
-                description: space,
-            });
-        });
-        childrenSpaces.majorList.forEach((space) => {
-            ansSpaces.push({
-                dimensions: [...currentSpace.dimensions, ...space.dimensions],
-                measures: currentSpace.measures,
-                significance: space.score,
-                type: 'children_major_factor',
-                description: space,
-            });
-        });
-        childrenSpaces.outlierList.forEach((space) => {
-            ansSpaces.push({
-                dimensions: [...currentSpace.dimensions, ...space.dimensions],
-                measures: currentSpace.measures,
-                significance: space.score,
-                type: 'children_outlier',
-                description: space,
-            });
-        });
-        self.postMessage(ansSpaces.filter(s => s.significance > 0.8))
     } catch (error) {
         console.error(error);
         self.postMessage([])

@@ -1,21 +1,16 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Record, Field, SemanticType, Filters } from '../interfaces';
-import { Insight, Utils, UnivariateSummary, specification } from 'visual-insights';
+import { Record, Field, Filters } from '../interfaces';
+import { Insight, Utils, UnivariateSummary } from 'visual-insights';
 import { baseVis } from './std2vegaSpec';
 import embed from 'vega-embed';
-import aggregate from 'cube-core';
-import { getExplaination } from '../services';
+import { getExplaination, IVisSpace } from '../services';
 import { Spinner } from '@tableau/tableau-ui';
 import RadioGroupButtons from './radioGroupButtons';
+import { IExplaination } from '../insights';
+import { getPredicatesFromVegaSignals } from '../utils';
 
 const collection  = Insight.IntentionWorkerCollection.init();
 type IReasonType = 'selection_dim_distribution' | 'selection_mea_distribution' | 'children_major_factor' | 'children_outlier';
-// const InsightTypeMapper: { [key: string]: string } = {
-//   [Insight.DefaultIWorker.cluster]: '分组区分度',
-//   [Insight.DefaultIWorker.outlier]: '异常',
-//   [Insight.DefaultIWorker.trend]: '趋势'
-//   // []: ''
-// }
 
 const ReasonTypeNames: { [key: string]: string} = {
   'selection_dim_distribution': '选择集+新维度',
@@ -29,42 +24,6 @@ interface SubSpace {
   measures: string[];
 }
 
-function spec(dataSource: Record[], dimensions: string[], measures: string[], fieldTypes: Array<{type: SemanticType; name: string}>) {
-  const fieldEntropyList = UnivariateSummary.getAllFieldsEntropy(
-    dataSource,
-    dimensions.concat(measures)
-  );
-  const dimScores = fieldEntropyList.map((f) => {
-    return [
-      f.fieldName,
-      f.entropy,
-      f.maxEntropy,
-      fieldTypes.find(f_ => f_.name === f.fieldName)
-    ];
-  }) as any;
-  return specification(
-    dimScores,
-    dataSource,
-    dimensions,
-    measures
-  )
-}
-
-function applyFilters (dataSource: Record[], filters: Filters): Record[] {
-  let filterKeys = Object.keys(filters);
-  return dataSource.filter(record => {
-    let keep = true;
-    for (let filterKey of filterKeys) {
-      if (filters[filterKey].length > 0) {
-        if (!filters[filterKey].includes(record[filterKey])) {
-          keep = false;
-          break;
-        }
-      }
-    }
-    return keep;
-  })
-}
 interface InsightBoardProps {
   dataSource: Record[];
   fields: Field[];
@@ -74,7 +33,8 @@ interface InsightBoardProps {
 }
 const InsightBoard: React.FC<InsightBoardProps> = props => {
   const { dataSource, fields, viewDs, viewMs, filters } = props;
-  const [recSpaces, setRecSpaces] = useState<Insight.InsightSpace[]>([]);
+  const [recSpaces, setRecSpaces] = useState<IExplaination[]>([]);
+  const [visSpaces, setVisSpaces] = useState<IVisSpace[]>([]);
   const [visIndex, setVisIndex] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const container = useRef<HTMLDivElement>(null);
@@ -110,9 +70,9 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
         dataSource,
         currentSpace,
         filters
-      }).then(spaces => {
-        console.log('finish')
-        setRecSpaces(spaces);
+      }).then(({ visSpaces, explainations }) => {
+        setRecSpaces(explainations);
+        setVisSpaces(visSpaces);
         setLoading(false);
       })
     }
@@ -124,26 +84,16 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
 
   useEffect(() => {
     const RecSpace = recSpaces[visIndex];
-    if (container.current && RecSpace) {
-      const aggData = aggregate({
-        dimensions: RecSpace.dimensions,
-        measures: RecSpace.measures,
-        dataSource: dataSource,
-        asFields: RecSpace.measures,
-        operator: 'sum',
-      });
-      const result = spec(
-        aggData,
-        RecSpace.dimensions,
-        RecSpace.measures,
-        fieldsWithType as any
-      );
+    const visSpec = visSpaces[visIndex];
+    if (container.current && RecSpace && visSpec) {
+
       const _vegaSpec = baseVis(
-        result.schema,
-        result.schema.geomType && result.schema.geomType[0] === 'point' ? dataSource : result.aggData,
+        visSpec.schema,
+        visSpec.schema.geomType && visSpec.schema.geomType[0] === 'point' ? dataSource : visSpec.dataView,
         // result.aggData,
         RecSpace.dimensions,
         RecSpace.measures,
+        RecSpace.predicates,
         RecSpace.measures.map((m) => ({
           op: 'sum',
           field: m,
@@ -158,7 +108,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
         embed(container.current, _vegaSpec);
       }
     }
-  }, [visIndex, recSpaces, fieldsWithType, dataSource])
+  }, [visIndex, recSpaces, visSpaces, fieldsWithType, dataSource])
 
   const FilterDesc = useMemo<string>(() => {
     if (filters) {
@@ -186,7 +136,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
             choosenIndex={visIndex}
             options={recSpaces.map((s, i) => ({
               value: s.type || '' + i,
-              label: `${s.type ? ReasonTypeNames[s.type] : '未识别'}: ${Math.round(s.significance * 100)}%`,
+              label: `${s.type ? ReasonTypeNames[s.type] : '未识别'}: ${Math.round(s.score * 100)}%`,
             }))}
             onChange={(v, i) => {
               setVisIndex(i);
@@ -203,7 +153,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
               {recSpaces[visIndex].type
                 ? ReasonTypeNames[recSpaces[visIndex].type!]
                 : '未识别'}{' '}
-              ，显著性为{Math.round(recSpaces[visIndex].significance * 100)}%。
+              ，显著性为{Math.round(recSpaces[visIndex].score * 100)}%。
               <br />
               {recSpaces[visIndex].description &&
                 `详情：${JSON.stringify(

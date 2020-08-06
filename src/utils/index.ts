@@ -230,3 +230,19 @@ export function filterByPredicates(data: Record[], predicates: IPredicate[]): Re
     // console.log('filter', data, filterData)
     return filterData;
 }
+
+export function applyFilters(dataSource: Record[], filters: Filters): Record[] {
+    let filterKeys = Object.keys(filters);
+    return dataSource.filter((record) => {
+        let keep = true;
+        for (let filterKey of filterKeys) {
+            if (filters[filterKey].length > 0) {
+                if (!filters[filterKey].includes(record[filterKey])) {
+                    keep = false;
+                    break;
+                }
+            }
+        }
+        return keep;
+    });
+}

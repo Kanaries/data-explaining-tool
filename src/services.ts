@@ -1,4 +1,4 @@
-import { Record, Filters } from './interfaces';
+import { Record, Filters, SemanticType } from './interfaces';
 import { Insight } from 'visual-insights';
 /* eslint import/no-webpack-loader-syntax:0 */
 // @ts-ignore
@@ -8,6 +8,8 @@ import InsightSpaceWorker from './workers/InsightService.worker';
 // @ts-ignore
 // eslint-disable-next-line
 import ExplainerWorker from './workers/explainer.worker';
+import { View, Specification } from 'visual-insights/build/esm/commonTypes';
+import { IExplaination } from './insights';
 
 function workerService<T, R>(worker: Worker, data: R): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -52,12 +54,25 @@ interface ExplainParams {
         measures: string[];
     }
 }
+export interface IVisSpace {
+  dataView: Record[];
+  schema: Specification;
+}
+interface ExplainReturns {
+  explainations: IExplaination[];
+  visSpaces: IVisSpace[];
+  fieldsWithSemanticType: Array<{key: string; type: SemanticType }>
+}
 export async function getExplaination(props: ExplainParams) {
   const worker = new ExplainerWorker();
   console.log('worker init', worker)
-  let result: Insight.InsightSpace[] = [];
+  let result: ExplainReturns = {
+    explainations: [],
+    visSpaces: [],
+    fieldsWithSemanticType: []
+  };
   try {
-      result = await workerService<Insight.InsightSpace[], ExplainParams>(worker, props);
+      result = await workerService<ExplainReturns, ExplainParams>(worker, props);
       return result;
   } catch (error) {
       console.error(error);
