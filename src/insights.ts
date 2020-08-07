@@ -1,6 +1,6 @@
 import { Insight } from 'visual-insights';
 import { Record } from './interfaces';
-import { checkMajorFactor, getPredicates, filterByPredicates, checkChildOutlier, IPredicate } from './utils';
+import { checkMajorFactor, filterByPredicates, checkChildOutlier, IPredicate } from './utils';
 import { normalizeWithParent, compareDistribution, normalizeByMeasures, getDistributionDifference } from './utils/normalization';
 export interface IExplaination {
     dimensions: string[];
@@ -53,13 +53,14 @@ export class DataExplainer {
     public explain (predicates: IPredicate[], dimensions: string[], measures: string[], threshold: number = 0.2): IExplaination[] {
         // const predicates = getPredicates(selection, dimensions, measures);
         // 讨论：知道selection，但是分析的维度是什么？
-        const dimSelectionSpaces = this.explainBySelection(
+        const selectAll = dimensions.length === 0 || predicates.length === 0; 
+        const dimSelectionSpaces = selectAll ? [] : this.explainBySelection(
             predicates,
             dimensions,
             measures,
             5
         );
-        const meaSelectionSpaces = this.explainByCorMeasures(
+        const meaSelectionSpaces = selectAll ? [] : this.explainByCorMeasures(
             predicates,
             dimensions,
             measures,
@@ -132,7 +133,8 @@ export class DataExplainer {
         const parentCuboid = this.engine.cube.getCuboid(dimensions);
         const parentData = filterByPredicates(parentCuboid.state, predicates);
         // console.log(parentData)
-        const knn = this.getKNN('dimension', dimensions, K_Neighbor);
+        const knn = this.getGeneralizeKNN('dimension', dimensions, K_Neighbor);
+        console.log('knn', knn)
         const majorList: Array<{key: string; score: number; dimensions: string[]}> = [];
         const outlierList: Array<{key: string; score: number; dimensions: string[]}> = [];
         for (let extendDim of knn) {
@@ -160,7 +162,7 @@ export class DataExplainer {
     public explainBySelection(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
         // const predicates = getPredicates(selection, dimensions, []);
         // const parentCuboid = this.engine.cube.getCuboid()
-        const knn = this.getKNN('dimension', dimensions, K_Neighbor);
+        const knn = this.getGeneralizeKNN('dimension', dimensions, K_Neighbor);
         const majorList: Array<{ score: number; dimensions: string[] }> = [];
         const outlierList: Array<{ score: number; dimensions: string[] }> = [];
         for (let extendDim of knn) {
@@ -190,7 +192,7 @@ export class DataExplainer {
     public explainByCorMeasures(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
         // const predicates = getPredicates(selection, dimensions, []);
         // const parentCuboid = this.engine.cube.getCuboid()
-        const knn = this.getKNN('measure', measures, K_Neighbor);
+        const knn = this.getGeneralizeKNN('measure', measures, K_Neighbor);
         const ans: Array<{ score: number; dimensions: string[]; measures: string[]; max: number;  min: number }> = [];
         const cuboid = this.engine.cube.getCuboid(dimensions);
         const normalizedState = normalizeByMeasures(cuboid.state, [...knn, ...measures]);
@@ -214,15 +216,15 @@ export class DataExplainer {
         ans.sort((a, b) => b.score - a.score);
         return ans;
     }
+    public getGeneralizeKNN(type: 'dimension' | 'measure', fields: string[], K_Neighbor: number = 3, threshold = 0) {
+        if (fields.length === 0) return this.getCenterFields(type, K_Neighbor);
+        return this.getKNN(type, fields, K_Neighbor, threshold);
+    }
     public getKNN(type: 'dimension' | 'measure', fields: string[], K_Neighbor: number = 3, threshold = 0) {
         const adjMatrix = type === 'dimension' ? this.engine.dataGraph.DG : this.engine.dataGraph.MG;
         const graphFields = type === 'dimension' ? this.engine.dataGraph.dimensions : this.engine.dataGraph.measures;
         const fieldIndices = fields.map(field => {
             let index = graphFields.indexOf(field);
-            if (index === -1) {
-                // TODO: provide a better solution for group dimension.
-                index = graphFields.indexOf(field + '(group)')
-            }
             return index;
         });
         const neighbors: Array<{dis: number, index: number, imp: number}> = [];
@@ -245,6 +247,18 @@ export class DataExplainer {
 
         neighbors.sort((a, b) => b.dis / b.imp - a.dis / a.imp);
         return neighbors.slice(0, K_Neighbor).map(f => graphFields[f.index]);
+    }
+    public getCenterFields (type: 'dimension' | 'measure', num: number = 5): string[] {
+        const adjMatrix = type === 'dimension' ? this.engine.dataGraph.DG : this.engine.dataGraph.MG;
+        const graphFields = type === 'dimension' ? this.engine.dataGraph.dimensions : this.engine.dataGraph.measures;
+        let fieldScores: Array<{field: string; score: number}> = adjMatrix.map((row, rIndex) => {
+            return {
+                field: graphFields[rIndex],
+                score: row.reduce((total, current) => total + Math.abs(current), 0)
+            }
+        })
+        fieldScores.sort((a, b) => b.score - a.score)
+        return fieldScores.map(f => f.field).slice(0, num);
     }
     public getVisSpec (spaces: IExplaination[]) {
         const engine = this.engine;

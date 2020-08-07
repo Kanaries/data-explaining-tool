@@ -20,7 +20,6 @@ import { Insight } from 'visual-insights';
 function getExplaination(e) {
     try {
         const { dimensions, measures, dataSource, filters = {}, currentSpace } = e.data; // as ReqData;
-        console.log('data re', e.data);
         const predicates = getPredicatesFromVegaSignals(filters, currentSpace.dimensions, []);
         const de = new DataExplainer(dataSource);
         de.setDimensions(dimensions).setMeasures(measures).preAnalysis();
@@ -35,7 +34,7 @@ function getExplaination(e) {
                 key: f.key,
                 type: f.semanticType
             }))
-        });
+        }); 
     } catch (error) {
         console.error(error);
         self.postMessage([])
