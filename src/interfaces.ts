@@ -2,7 +2,6 @@ import { StatFuncName } from "visual-insights/build/esm/statistics";
 import { AggFC } from 'cube-core/built/types';
 
 export interface Record {
-}
     [key: string]: any;
 }
 
