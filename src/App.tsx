@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DraggableFields, { DraggableFieldState } from './Fields';
-import { Record, Field, Filters } from './interfaces';
+import { Record, Filters, Field } from './interfaces';
 import { getTitanicData } from './data/titanic';
 import ReactVega from './vis/react-vega';
 import { GEMO_TYPES } from './config';

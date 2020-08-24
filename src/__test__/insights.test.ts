@@ -64,7 +64,7 @@ test('explainByChildren', () => {
     const { majorList, outlierList } = de.explainByChildren(
       predicates,
       ['age'],
-      ['height'],
+      [{ key: 'height', op: 'sum'}],
       2
     );
     console.log(majorList, outlierList);
@@ -80,7 +80,7 @@ test('explainBySelection', () => {
     const outlierList = de.explainBySelection(
         predicates,
         ['age'],
-        ['height'],
+        [{ key: 'height', op: 'sum' }],
         2
     );
     console.log(outlierList);
@@ -110,7 +110,7 @@ test('harder case', () => {
         .setMeasures(measures)
         .preAnalysis();
     const predicates = getPredicates([{ "Pclass": "3" }], ['Pclass'], ['Survived']);
-    const ans = de.explainBySelection(predicates, ['Pclass'], ['Survived'], 10)
+    const ans = de.explainBySelection(predicates, ['Pclass'], [{key: 'Survived', op: 'sum' }], 10)
     console.log(ans)
     expect(ans.length > 0).toBe(true);
     const predicates2 = getPredicates(
@@ -118,7 +118,7 @@ test('harder case', () => {
         ['Pclass'],
         ['Survived']
     );
-    const { majorList, outlierList } = de.explainByChildren(predicates2, ['Pclass'], ['Survived'], 10)
+    const { majorList, outlierList } = de.explainByChildren(predicates2, ['Pclass'], [{key: 'Survived', op: 'sum'}], 10)
     console.log({
         majorList,
         outlierList

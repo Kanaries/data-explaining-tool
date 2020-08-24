@@ -64,6 +64,7 @@ export function baseVis(
   };
   let basicSpec: any = {
     width: chartWidth,
+    transform: [],
     mark: {
       type:
         geomType[0] && geomTypeMap[geomType[0]]
@@ -73,15 +74,37 @@ export function baseVis(
     },
     encoding: {},
   };
+  if (defaultAggregated && aggregatedMeasures.length > 0) {
+    basicSpec.transform.push({
+      aggregate: [],
+      groupby: dimensions
+    })
+  }
+  const aggMap: Map<string, string> = new Map();
   for (let channel in fieldMap) {
     if (fieldMap[channel]) {
-      basicSpec.encoding[channel] = {
-        field: adjustField(fieldMap[channel]),
-        type: getFieldType(fieldMap[channel]),
-      };
       if (getFieldType(fieldMap[channel]) === 'quantitative' && defaultAggregated) {
-        basicSpec.encoding[channel].aggregate = 'sum';
+        const targetField = aggregatedMeasures.find((f) => f.field === fieldMap[channel]);
+        if (targetField) {
+          aggMap.set(targetField.field, `${targetField.op}_of_${targetField.field}`);
+          basicSpec.transform[0].aggregate.push({
+              op: targetField.op === 'count' ? 'sum' : targetField.op,
+              field: targetField.field,
+              as: `${targetField.op}_of_${targetField.field}`,
+          });
+        }
+        // const targetField = aggregatedMeasures.find((f) => f.field === fieldMap[channel]);
+        // basicSpec.encoding[channel].aggregate = targetField ? targetField.op : 'sum';
+        // basicSpec.encoding[channel].aggregate =
+        //     basicSpec.encoding[channel].aggregate === 'count'
+        //         ? 'sum'
+        //         : basicSpec.encoding[channel].aggregate;
       }
+      const adjField = adjustField(fieldMap[channel]);
+      basicSpec.encoding[channel] = {
+          field: aggMap.has(adjField) ? aggMap.get(adjField) : adjField,
+          type: getFieldType(fieldMap[channel]),
+      };
       if (
         ['x', 'y'].includes(channel) &&
         getFieldType(fieldMap[channel]) === 'quantitative' &&
@@ -106,19 +129,25 @@ export function baseVis(
   basicSpec.mark.color = '#8c8c8c';
   // basicSpecFilter.mark.color = '#f5222d';
   basicSpecFilter.mark.opacity = 0.9;
-  basicSpecFilter.transform = predicates.map(pre => {
-    const filter: any = {
-      filter: {
-        field: pre.key,
-      }
-    };
-    if (pre.type === 'continuous') {
-      filter.filter.range = pre.range
-    } else {
-      filter.filter.oneOf = [...pre.range.values()]
-    }
-    return filter
-  })
+  if (typeof basicSpecFilter.transform === 'undefined') {
+    basicSpecFilter.transform = [];
+  }
+  basicSpecFilter.transform = [
+      ...predicates.map((pre) => {
+          const filter: any = {
+              filter: {
+                  field: pre.key,
+              },
+          };
+          if (pre.type === 'continuous') {
+              filter.filter.range = pre.range;
+          } else {
+              filter.filter.oneOf = [...pre.range.values()];
+          }
+          return filter;
+      }),
+      ...basicSpecFilter.transform,
+  ];
   if (color.length + size.length + opacity.length + page.length > 0) {
     spec = {
         ...spec,

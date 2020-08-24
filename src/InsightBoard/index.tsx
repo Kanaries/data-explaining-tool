@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Record, Field, Filters } from '../interfaces';
+import { Record, Field, Filters, IMeasure } from '../interfaces';
 import { Insight, Utils, UnivariateSummary } from 'visual-insights';
 import { baseVis } from './std2vegaSpec';
 import embed from 'vega-embed';
@@ -7,7 +7,7 @@ import { getExplaination, IVisSpace } from '../services';
 import { Spinner } from '@tableau/tableau-ui';
 import RadioGroupButtons from './radioGroupButtons';
 import { IExplaination } from '../insights';
-import { getPredicatesFromVegaSignals, IPredicate } from '../utils';
+import { mergeMeasures } from './utils';
 
 const collection  = Insight.IntentionWorkerCollection.init();
 type IReasonType = 'selection_dim_distribution' | 'selection_mea_distribution' | 'children_major_factor' | 'children_outlier';
@@ -21,7 +21,7 @@ const ReasonTypeNames: { [key: string]: string} = {
 collection.enable(Insight.DefaultIWorker.cluster, false);
 interface SubSpace {
   dimensions: string[];
-  measures: string[];
+  measures: IMeasure[];
 }
 
 interface InsightBoardProps {
@@ -61,7 +61,10 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
       const dimensions = dimsWithTypes.map(d => d.name);
       const currentSpace: SubSpace = {
           dimensions: viewDs.map((f) => f.id),
-          measures: viewMs.map((f) => f.id),
+          measures: viewMs.map((f) => ({
+            key: f.id,
+            op: f.aggName as any
+          })),
       };
       setLoading(true);
       getExplaination({
@@ -89,6 +92,7 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
       const usePredicates: boolean =
           RecSpace.type === 'selection_dim_distribution' ||
           RecSpace.type === 'selection_mea_distribution';
+      const mergedMeasures = mergeMeasures(RecSpace.measures, RecSpace.extendMs);
       const _vegaSpec = baseVis(
           visSpec.schema,
           visSpec.schema.geomType && visSpec.schema.geomType[0] === 'point'
@@ -96,12 +100,12 @@ const InsightBoard: React.FC<InsightBoardProps> = props => {
               : visSpec.dataView,
           // result.aggData,
           [...RecSpace.dimensions, ...RecSpace.extendDs],
-          [...RecSpace.measures, ...RecSpace.extendMs],
+          [...RecSpace.measures, ...RecSpace.extendMs].map(m => m.key),
           usePredicates ? RecSpace.predicates : null,
-          [...RecSpace.measures, ...RecSpace.extendMs].map((m) => ({
-              op: 'sum',
-              field: m,
-              as: m,
+          mergedMeasures.map((m) => ({
+              op: m.op,
+              field: m.key,
+              as: m.key,
           })),
           fieldsWithType as any,
           true,

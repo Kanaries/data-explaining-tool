@@ -1,4 +1,4 @@
-import { Record, Filters, SemanticType } from './interfaces';
+import { Record, Filters, SemanticType, IMeasure } from './interfaces';
 import { Insight } from 'visual-insights';
 /* eslint import/no-webpack-loader-syntax:0 */
 // @ts-ignore
@@ -51,7 +51,7 @@ interface ExplainParams {
     filters?: Filters;
     currentSpace: {
         dimensions: string[];
-        measures: string[];
+        measures: IMeasure[];
     }
 }
 export interface IVisSpace {

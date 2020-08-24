@@ -1,12 +1,13 @@
 import { Insight } from 'visual-insights';
-import { Record } from './interfaces';
+import { Record, IMeasure } from './interfaces';
 import { checkMajorFactor, filterByPredicates, checkChildOutlier, IPredicate } from './utils';
 import { normalizeWithParent, compareDistribution, normalizeByMeasures, getDistributionDifference } from './utils/normalization';
+import { StatFuncName } from 'visual-insights/build/esm/statistics';
 export interface IExplaination {
     dimensions: string[];
-    measures: string[];
+    measures: IMeasure[];
     extendDs: string[];
-    extendMs: string[];
+    extendMs: IMeasure[];
     type: string;
     score: number;
     description: any;
@@ -17,6 +18,7 @@ export class DataExplainer {
     private dimensions: string[];
     private measures: string[];
     private engine: Insight.VIEngine;
+    private defaultAggs: StatFuncName[] = ['min', 'max', 'sum', 'count', 'mean'];
     constructor (dataSource: Record[] = []) {
         this.engine = new Insight.VIEngine();
         this.dataSource = dataSource;
@@ -44,21 +46,38 @@ export class DataExplainer {
         return this;
     }
     public preAnalysis() {
-        this.engine.buildGraph()
-            .clusterFields()
-            .buildSubspaces()
-            .buildCube();
+        console.log('start')
+        this.engine.buildGraph();
+        this.engine.dataGraph.DIMENSION_CORRELATION_THRESHOLD = 0.6;
+        this.engine.dataGraph.MEASURE_CORRELATION_THRESHOLD = 0.8;
+        console.log('graph finish')
+        this.engine
+            .clusterFields();
+        console.log('cluster finish')
+        this.engine.buildSubspaces({
+                MAX: 2,
+                MIN: 1
+            },
+            {
+                MAX: 2,
+                MIN: 1
+            }
+            );
+        console.log('subspaces finsh. start build-cube')
+        this.engine.buildCube();
+        console.log('cube finish')
         return this;
     }
-    public explain (predicates: IPredicate[], dimensions: string[], measures: string[], threshold: number = 0.2): IExplaination[] {
+    public explain (predicates: IPredicate[], dimensions: string[], measures: IMeasure[], ops: StatFuncName[], threshold: number = 0.2): IExplaination[] {
         // const predicates = getPredicates(selection, dimensions, measures);
         // 讨论：知道selection，但是分析的维度是什么？
-        const selectAll = dimensions.length === 0 || predicates.length === 0; 
+        const selectAll = dimensions.length === 0 || predicates.length === 0;
+        console.log({ selectAll })
         const dimSelectionSpaces = selectAll ? [] : this.explainBySelection(
             predicates,
             dimensions,
             measures,
-            5
+            10
         );
         const meaSelectionSpaces = selectAll ? [] : this.explainByCorMeasures(
             predicates,
@@ -70,7 +89,7 @@ export class DataExplainer {
             [],
             dimensions,
             measures,
-            5
+            10
         );
         const ansSpaces: IExplaination[] = [];
         dimSelectionSpaces.forEach((space) => {
@@ -123,7 +142,7 @@ export class DataExplainer {
         });
         return ansSpaces.filter(space => space.score >= threshold);
     }
-    public explainByChildren(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
+    public explainByChildren(predicates: IPredicate[], dimensions: string[], measures: IMeasure[], K_Neighbor: number = 3) {
         // 1. find most relative dimensions(topK)
         // 2. for each dimension, we check all the dim member in it. find the member whos distribution is most close to current one.
         // here we do not nomorlize all the dim member's distribution, we use the relative distribution instead.
@@ -131,15 +150,17 @@ export class DataExplainer {
         // const predicates: IPredicate[] = selection === 'all' ? [] : getPredicates(selection, dimensions, []);
         // console.log(predicates)
         const parentCuboid = this.engine.cube.getCuboid(dimensions);
-        const parentData = filterByPredicates(parentCuboid.state, predicates);
+        const measureNames = measures.map(m => m.key);
+        const ops = measures.map(m => m.op);
+        const parentData = filterByPredicates(parentCuboid.getState(measureNames, ops), predicates);
         // console.log(parentData)
-        const knn = this.getGeneralizeKNN('dimension', dimensions, K_Neighbor);
+        const knn = this.getGeneralizeKNN('dimension', dimensions, K_Neighbor, 0);
         console.log('knn', knn)
-        const majorList: Array<{key: string; score: number; dimensions: string[]}> = [];
-        const outlierList: Array<{key: string; score: number; dimensions: string[]}> = [];
+        const majorList: Array<{key: string; score: number; dimensions: string[]; measures: IMeasure[]}> = [];
+        const outlierList: Array<{key: string; score: number; dimensions: string[]; measures: IMeasure[]}> = [];
         for (let extendDim of knn) {
             const cuboid = this.engine.cube.getCuboid([...dimensions, extendDim]);
-            const data = filterByPredicates(cuboid.state, predicates);
+            const data = filterByPredicates(cuboid.getState(measureNames, ops), predicates);
             let groups: Map<any, Record[]> = new Map();
             for (let record of data) {
                 if (!groups.has(record[extendDim])) {
@@ -147,10 +168,10 @@ export class DataExplainer {
                 }
                 groups.get(record[extendDim])?.push(record)
             }
-            const { majorKey, majorSum } = checkMajorFactor(parentData, groups, dimensions, measures)
-            majorList.push({ key: majorKey, score: majorSum, dimensions: [extendDim] })
-            const { outlierKey, outlierSum } = checkChildOutlier(parentData, groups, dimensions, measures);
-            outlierList.push({ key: outlierKey, score: outlierSum, dimensions: [extendDim] })
+            const { majorKey, majorSum } = checkMajorFactor(parentData, groups, dimensions, measureNames)
+            majorList.push({ key: majorKey, score: majorSum, dimensions: [extendDim], measures })
+            const { outlierKey, outlierSum } = checkChildOutlier(parentData, groups, dimensions, measureNames);
+            outlierList.push({ key: outlierKey, score: outlierSum, dimensions: [extendDim], measures })
         }
         majorList.sort((a, b) => a.score - b.score);
         outlierList.sort((a, b) => b.score - a.score);
@@ -159,29 +180,31 @@ export class DataExplainer {
             outlierList
         };
     }
-    public explainBySelection(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
+    public explainBySelection(predicates: IPredicate[], dimensions: string[], measures: IMeasure[], K_Neighbor: number = 3) {
         // const predicates = getPredicates(selection, dimensions, []);
         // const parentCuboid = this.engine.cube.getCuboid()
-        const knn = this.getGeneralizeKNN('dimension', dimensions, K_Neighbor);
-        const majorList: Array<{ score: number; dimensions: string[] }> = [];
-        const outlierList: Array<{ score: number; dimensions: string[] }> = [];
+        const measureNames = measures.map((m) => m.key);
+        const ops = measures.map((m) => m.op);
+        const knn = this.getGeneralizeKNN('dimension', dimensions, K_Neighbor, 0);
+        const outlierList: Array<{ score: number; dimensions: string[]; measures: IMeasure[] }> = [];
         for (let extendDim of knn) {
             const parentCuboid = this.engine.cube.getCuboid([extendDim])
             const cuboid = this.engine.cube.getCuboid([...dimensions, extendDim])
-            const overallData = parentCuboid.state;
-            const subData = filterByPredicates(cuboid.state, predicates);
+            const overallData = parentCuboid.getState(measureNames, ops);
+            const subData = filterByPredicates(cuboid.getState(measureNames, ops), predicates);
 
-            let outlierNormalization = normalizeWithParent(subData, overallData, measures, false);
+            let outlierNormalization = normalizeWithParent(subData, overallData, measureNames, false);
 
             let outlierScore = compareDistribution(
                 outlierNormalization.normalizedData,
                 outlierNormalization.normalizedParentData,
                 [extendDim],
-                measures
+                measureNames
             );
             outlierScore /= (measures.length * 2)
             outlierList.push({
                 dimensions: [extendDim],
+                measures,
                 score: outlierScore
             })
             // compare overall and subdata. set score. (major and outlier)
@@ -189,29 +212,80 @@ export class DataExplainer {
         outlierList.sort((a, b) => b.score - a.score)
         return outlierList;
     }
-    public explainByCorMeasures(predicates: IPredicate[], dimensions: string[], measures: string[], K_Neighbor: number = 3) {
+    public explainByCorMeasures(predicates: IPredicate[], dimensions: string[], measures: IMeasure[], K_Neighbor: number = 3) {
         // const predicates = getPredicates(selection, dimensions, []);
         // const parentCuboid = this.engine.cube.getCuboid()
-        const knn = this.getGeneralizeKNN('measure', measures, K_Neighbor);
-        const ans: Array<{ score: number; dimensions: string[]; measures: string[]; max: number;  min: number }> = [];
+        const measureNames = measures.map((m) => m.key);
+        const ops = measures.map((m) => m.op);
+        const knn = this.getGeneralizeKNN('measure', measureNames, K_Neighbor);
+        const allMeasureNames = [...measureNames, ...knn];
+        // const ops: StatFuncName[] = allMeasures.map(() => 'sum');
+        const ans: Array<{ score: number; dimensions: string[]; measures: IMeasure[]; max: number;  min: number }> = [];
         const cuboid = this.engine.cube.getCuboid(dimensions);
-        const normalizedState = normalizeByMeasures(cuboid.state, [...knn, ...measures]);
-        for (let extendMea of knn) {
-            let maxDiff = 0;
-            let minDiff = 1;
-            for (let baseMeasure of measures) {
-                let diffScore = getDistributionDifference(normalizedState, dimensions, baseMeasure, extendMea) / 2;
-                maxDiff = Math.max(maxDiff, diffScore);
-                minDiff = Math.min(minDiff, diffScore);
+        for (let op of this.defaultAggs) {
+            const extendMeasureOps = knn.map(() => op);
+            const normalizedState = normalizeByMeasures(
+                cuboid.getState(allMeasureNames, [...ops, ...extendMeasureOps]),
+                allMeasureNames
+            );
+            for (let extendMea of allMeasureNames) {
+                const originMeasure = measures.find(m => m.key === extendMea);
+                if (originMeasure && originMeasure.op === op) continue;
+                else if (originMeasure) {
+                    const norStateWithNewOp = normalizeByMeasures(
+                        cuboid.getState([extendMea], [op]),
+                        [extendMea]
+                    )
+                    const mergedDataSource = normalizedState.map((record, rIndex) => {
+                        return {
+                            ...record,
+                            [`__${extendMea}`]: norStateWithNewOp[rIndex][extendMea]
+                        }
+                    })
+                    let maxDiff = 0;
+                    let minDiff = 1;
+                    for (let baseMeasure of measures) {
+                        let diffScore =
+                            getDistributionDifference(
+                                mergedDataSource,
+                                dimensions,
+                                baseMeasure.key,
+                                `__${extendMea}`
+                            ) / 2;
+                        maxDiff = Math.max(maxDiff, diffScore);
+                        minDiff = Math.min(minDiff, diffScore);
+                    }
+                    ans.push({
+                        dimensions,
+                        score: Math.max(1 - minDiff, maxDiff),
+                        measures: [{ key: extendMea, op }],
+                        max: maxDiff,
+                        min: minDiff,
+                    });
+                } else {
+                    let maxDiff = 0;
+                    let minDiff = 1;
+                    for (let baseMeasure of measures) {
+                        let diffScore =
+                            getDistributionDifference(
+                                normalizedState,
+                                dimensions,
+                                baseMeasure.key,
+                                extendMea
+                            ) / 2;
+                        maxDiff = Math.max(maxDiff, diffScore);
+                        minDiff = Math.min(minDiff, diffScore);
+                    }
+                    ans.push({
+                        dimensions,
+                        score: Math.max(1 - minDiff, maxDiff),
+                        measures: [{ key: extendMea, op }],
+                        max: maxDiff,
+                        min: minDiff,
+                    });
+                }
+                // compare overall and subdata. set score. (major and outlier)
             }
-            ans.push({
-                dimensions,
-                score: Math.max(1 - minDiff, maxDiff),
-                measures: [extendMea],
-                max: maxDiff,
-                min: minDiff
-            })
-            // compare overall and subdata. set score. (major and outlier)
         }
         ans.sort((a, b) => b.score - a.score);
         return ans;
@@ -264,10 +338,12 @@ export class DataExplainer {
         const engine = this.engine;
         return spaces.map(space => {
             let visSpace: Insight.InsightSpace;
+            const measureNames = space.measures.map(m => m.key);
+            const extendMsNames = space.extendMs.map(m => m.key);
             if (space.type === 'children_major_factor' || space.type === 'children_outlier') {
                 visSpace = {
                     dimensions: [...space.extendDs, ...space.dimensions],
-                    measures: space.extendMs.length > 0 ? space.extendMs : space.measures,
+                    measures: extendMsNames.length > 0 ? extendMsNames : measureNames,
                     significance: space.score,
                     score: space.score,
                     description: space.description,
@@ -275,15 +351,16 @@ export class DataExplainer {
             } else {
                 visSpace = {
                     dimensions: space.extendDs.length > 0 ? space.extendDs : space.dimensions,
-                    measures: space.extendMs.length > 0 ? space.extendMs : space.measures,
+                    measures: extendMsNames.length > 0 ? extendMsNames : measureNames,
                     significance: space.score,
                     score: space.score,
                     description: space.description,
                 };
             }
+            const allMeasures = [...space.measures, ...space.extendMs];
             return {
                 schema: engine.specification(visSpace).schema,
-                dataView: engine.cube.getCuboid([...space.dimensions, ...space.extendDs]).state
+                dataView: engine.cube.getCuboid([...space.dimensions, ...space.extendDs]).getState(allMeasures.map(m => m.key), allMeasures.map(m => m.op))
             };
         })
     }
