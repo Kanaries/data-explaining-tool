@@ -7,8 +7,9 @@ const MenuContainer = styled.div`
   position: absolute;
   z-index: 99;
   cursor: pointer;
-  box-shadow: 0px 0px 10px 2px rgba(0, 0, 0, 0.19);
+  box-shadow: 0px 0px 8px 1px rgba(0, 0, 0, 0.09);
   border-radius: 2px;
+  padding: 4px;
 `;
 interface ClickMenuProps {
   x: number;

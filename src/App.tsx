@@ -13,6 +13,7 @@ import Model from './components/model';
 import { getStudentsData } from './data/students';
 import DataSourcePanel from './dataSource/index';
 import { useGlobalState } from './store';
+import { preAnalysis, destroyWorker } from './services'
 
 
 const INIT_DF_STATE: DraggableFieldState = {
@@ -43,6 +44,7 @@ function App() {
   const [showInsight, setShowInsight] = useState<boolean>(false);
   const [filters, setFilters] = useState<Filters>({});
   const [showDSPanel, setShowDSPanel] = useState<boolean>(false);
+  const [insightReady, setInsightReady] = useState<boolean>(false);
   // const [ds, setDS] = useState<Dataset>({ dimensions: [], measures: [], dataSource: []});
   const [newDBIndex, setNewDBIndex] = useState<number>(0);
   // useEffect(() => {
@@ -83,6 +85,23 @@ function App() {
       ...fstate.size,
     ].filter((f) => f.type === 'M');
   }, [fstate]);
+
+  useEffect(() => {
+    const ds = GS.dataBase[GS.currentDBIndex];
+    if (ds) {
+      setInsightReady(false)
+      preAnalysis({
+        dataSource: ds.dataSource,
+        dimensions: ds.fields.filter(f => f.analyticType === 'dimension').map(f => f.key),
+        measures: ds.fields.filter(f => f.analyticType === 'measure').map(f => f.key)
+      }).then(() => {
+        setInsightReady(true);
+      })
+    }
+    return () => {
+      destroyWorker();
+    }
+  }, [GS.currentDBIndex, GS.dataBase]);
 
   const createDB = useCallback(() => {
     updateGS(draft => {
@@ -127,6 +146,9 @@ function App() {
           showDSPanel && <Model title="创建数据源" onClose={() => { setShowDSPanel(false); }}>
             <DataSourcePanel dbIndex={newDBIndex} onSubmit={() => { setShowDSPanel(false); }} />
           </Model>
+        }
+        {
+          insightReady && <span style={{ margin: '1em' }}>iready</span>
         }
       </Container>
       <Container>
