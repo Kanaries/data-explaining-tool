@@ -236,7 +236,7 @@ export class DataExplainer {
                 [extendDim],
                 measureNames
             );
-            outlierScore /= (measures.length * 2)
+            // outlierScore /= (measures.length * 2)
             outlierList.push({
                 dimensions: [extendDim],
                 measures,
