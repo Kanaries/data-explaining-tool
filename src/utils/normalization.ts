@@ -64,18 +64,20 @@ export function compareDistribution (distribution1: Record[], distribution2: Rec
             const targetRecord = distribution2[targetRecordIndex];
             for (let mea of measures) {
                 // score += Math.abs(targetRecord[mea] - record[mea]);
+                // if (targetRecord[mea] === 0 || record[mea] === 0) continue;
                 // score += Math.max(targetRecord[mea], record[mea]) / Math.min(targetRecord[mea], record[mea]);
-                if (targetRecord[mea] === 0 || record[mea] === 0) continue;
+                
                 score = Math.max(
                     score,
                     Math.max(targetRecord[mea], record[mea]) /
                         Math.min(targetRecord[mea], record[mea])
                 );
+                console.log('score', score)
                 count++;
             }
         } else {
             for (let mea of measures) {
-                score = Math.max(score, 1)
+                score = Math.max(score, record[mea])
                 // score += Math.abs(record[mea])
                 count++;
             }
@@ -86,7 +88,7 @@ export function compareDistribution (distribution1: Record[], distribution2: Rec
             tagsForD2[i] = true;
             for (let mea of measures) {
                 // score += Math.abs(distribution2[i][mea])
-                score = Math.max(score, 1);
+                score = Math.max(score, distribution2[i][mea]);
                 count++;
             }
         }
